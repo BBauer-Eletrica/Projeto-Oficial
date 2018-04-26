@@ -1,0 +1,13 @@
+#Include "Totvs.ch"
+
+/*==========================================================================
+ Funcao...........:	TMKR03
+ Descricao........:	Chamada do pedido de venda (Call Center)
+ 					Alterado para chamada grafica
+ Autor............:	Fabrica de Software (Fabritech)
+ Parametros.......:	Nil
+ Retorno..........:	Nil
+==========================================================================*/
+User Function TMKR03( cAtende )
+	U_TMKR3A( cAtende )
+Return Nil

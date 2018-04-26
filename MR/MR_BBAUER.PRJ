@@ -1,0 +1,32 @@
+Group MR
+   Version=7.0
+   VSSDB=
+   HasProperties=1
+   Properties
+      BeforeApply=
+      AfterApply=
+      Icon=
+      ID=
+      Version=
+      PalmName=
+      OutPut=
+   End
+   ProjectsCount=1
+   Project Faturamento
+      FoldersCount=2
+      Folder Ponto_de_entrada
+         VSSPath=Fontes
+         FilesCount=2
+         File \TOTVSBAUER\Protheus\my projects\MR\Faturamento\Ponto_de_entrada\PE_MTA410.PRW
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\MR\Faturamento\Cadastros\CADZ01.prw
+             Type=T
+         End
+      End
+      Folder Definições
+         VSSPath=Definições
+         FilesCount=0
+      End
+   End
+End

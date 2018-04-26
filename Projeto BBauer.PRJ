@@ -1,0 +1,121 @@
+Group Projeto BBauer
+   Version=7.0
+   VSSDB=
+   HasProperties=1
+   Properties
+      BeforeApply=
+      AfterApply=
+      Icon=
+      ID=
+      Version=
+      PalmName=
+      OutPut=
+   End
+   ProjectsCount=5
+   Project Faturamento
+      FoldersCount=1
+      Folder Atualizacoes
+         VSSPath=Fontes
+         FilesCount=0
+      End
+   End
+   Project NF-e
+      FoldersCount=1
+      Folder Atualizacoes
+         VSSPath=Nova Pasta1
+         FilesCount=3
+         File \TOTVSBAUER\Protheus\my projects\NF-e\Atualizacoes\danfeii.prw
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\NF-e\Atualizacoes\danfeiii.prw
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\NF-e\Atualizacoes\nfesefaz.prw
+             Type=T
+         End
+      End
+   End
+   Project Call Center
+      FoldersCount=2
+      Folder Pontos de Entrada
+         VSSPath=Nova Pasta1
+         FilesCount=1
+         File \TOTVSBAUER\Protheus\my projects\Call Center\Ponto de Entrada\TK271ROTM.prw
+             Type=T
+         End
+      End
+      Folder Relatorios
+         VSSPath=Nova Pasta2
+         FilesCount=2
+         File \TOTVSBAUER\Protheus\my projects\Call Center\Relatorios\TMKR03.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Call Center\Relatorios\TMKR3A.prx
+             Type=T
+         End
+      End
+   End
+   Project Compras
+      FoldersCount=2
+      Folder Relatorios
+         VSSPath=Nova Pasta1
+         FilesCount=1
+         File \TOTVSBAUER\Protheus\my projects\Compras\Relatorios\PEDCOMP.prw
+             Type=T
+         End
+      End
+      Folder Pontos de Entrada
+         VSSPath=Nova Pasta2
+         FilesCount=1
+         File \TOTVSBAUER\Protheus\my projects\Compras\Pontos de Entrada\MT103CWH.prw
+             Type=T
+         End
+      End
+   End
+   Project Cnab Pagar
+      FoldersCount=1
+      Folder CnabCP
+         VSSPath=Nova Pasta1
+         FilesCount=13
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\ConvLD.prw
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\pagacta.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\pagagen.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\pagano.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\pagban.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\pagval.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\Pagnos.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\Pagide.PRW
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\pagdoc.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\Pagcodbar.prw
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\Pagcar.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\CodBar.prx
+             Type=T
+         End
+         File \TOTVSBAUER\Protheus\my projects\Cnab Pagar\Pagmod.prx
+             Type=T
+         End
+      End
+   End
+End

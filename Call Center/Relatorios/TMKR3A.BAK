@@ -1,0 +1,523 @@
+#Include "Totvs.ch"
+#Include "FWPrintSetup.ch"
+#Include "RptDef.ch"                                      
+#Include "ParmType.ch"
+
+#Define COLUINI		0005
+#Define MAXCOLU		0870
+
+/*==========================================================================
+ Funcao...........:	TMKR3A
+ Descricao........:	Relatorio Grafico de Orcamento / Pedido de Vendas
+ Autor............:	Fabrica de Software (Fabritech)
+ Parametros.......:	Nil
+ Retorno..........:	Nil
+==========================================================================*/
+User Function TMKR3A( cAtende )
+	Local cRelName  := "TMKR3A"
+	Local aDevice 	:= {}
+	Local aOrdem 	:= {}
+	Local nOrdem 	:= 1
+	Local cPathDest := GetSrvProfString("StartPath","\system\")
+	Local cSession  := GetPrinterSession()
+	Local lAdjust   := .F.
+	Local nFlags    := PD_ISTOTVSPRINTER+PD_DISABLEPAPERSIZE
+	Local nPrintTy	:= 6
+	Local oPrinter 	:= Nil
+	Local oSetup    := Nil
+	
+	Private oFont06	:= TFont():New("Times New Roman",,006,,.T.,,,,,.F.,.F.)
+	Private oFont08	:= TFont():New("Times New Roman",,008,,.T.,,,,,.F.,.F.)
+	Private oFont10 := TFont():New("Times New Roman",,010,,.T.,,,,,.F.,.F.)
+
+	Private nMaxLin	:= 350
+	Private nLinha	:= 900
+	Private nPagina	:= 000
+	
+	AADD(aDevice,"DISCO") // 1
+	AADD(aDevice,"SPOOL") // 2
+	AADD(aDevice,"EMAIL") // 3
+	AADD(aDevice,"EXCEL") // 4
+	AADD(aDevice,"HTML" ) // 5
+	AADD(aDevice,"PDF"  ) // 6
+	
+	cSession	:= GetPrinterSession()
+	cDevice		:= If( Empty(fwGetProfString(cSession,"PRINTTYPE","SPOOL",.T.)),"PDF",fwGetProfString(cSession,"PRINTTYPE","SPOOL",.T.) )
+	nOrient		:= If( fwGetProfString(cSession,"ORIENTATION","PORTRAIT",.T.)=="PORTRAIT",1,2 )
+	nLocal		:= If( fwGetProfString(cSession,"LOCAL","SERVER",.T.)=="SERVER",1,2 )
+	nPrintTy	:= aScan(aDevice,{|x| x == cDevice } )
+	
+	oPrinter 	:= FWMSPrinter():New(cRelName, nPrintTy, lAdjust, ,.T.)
+	oSetup		:= FWPrintSetup():New(nFlags,cRelName)
+	
+	oSetup:SetPropert( PD_PRINTTYPE   , nPrintTy	)
+	oSetup:SetPropert( PD_ORIENTATION , nOrient		)
+	oSetup:SetPropert( PD_DESTINATION , nLocal		)
+	oSetup:SetPropert( PD_MARGIN      , {0,0,0,0}	)
+	
+	oSetup:SetOrderParms(aOrdem,@nOrdem)
+	
+	If oSetup:Activate() == PD_OK 
+	
+		fwWriteProfString( cSession, "LOCAL"      , If(oSetup:GetProperty(PD_DESTINATION) == 1	,"SERVER"    ,"CLIENT"    ), .T. )
+		fwWriteProfString( cSession, "PRINTTYPE"  , If(oSetup:GetProperty(PD_PRINTTYPE) == 2  	,"SPOOL"     ,"PDF"       ), .T. )
+		fwWriteProfString( cSession, "ORIENTATION", If(oSetup:GetProperty(PD_ORIENTATION) == 1	,"PORTRAIT"  ,"LANDSCAPE" ), .T. )
+	
+		oPrinter:lServer := oSetup:GetProperty(PD_DESTINATION) == AMB_SERVER
+		oPrinter:SetDevice(oSetup:GetProperty(PD_PRINTTYPE))
+	
+		If oSetup:GetProperty(PD_ORIENTATION) == 1
+			oPrinter:SetPortrait()
+		Else 
+			oPrinter:SetLandscape()
+		EndIf
+	
+		oPrinter:SetPaperSize(oSetup:GetProperty(PD_PAPERSIZE))
+		oPrinter:setCopies(Val(oSetup:cQtdCopia))
+	
+		oPrinter:SetResolution(78)
+		oPrinter:SetLandscape()
+		oPrinter:SetPaperSize(DMPAPER_A4)
+		oPrinter:SetMargin(60,60,60,60)
+
+		If oSetup:GetProperty(PD_PRINTTYPE) == IMP_SPOOL
+			oPrinter:nDevice 	:= IMP_SPOOL
+			fwWriteProfString(GetPrinterSession(),"DEFAULT", oSetup:aOptions[PD_VALUETYPE], .T.)
+			oPrinter:cPrinter	:= oSetup:aOptions[PD_VALUETYPE]
+		Else 
+			oPrinter:nDevice 	:= IMP_PDF
+			oPrinter:cPathPDF 	:= oSetup:aOptions[PD_VALUETYPE]
+			oPrinter:SetViewPDF(.T.)
+		Endif
+		
+		RptStatus({|lEnd| TMKR3AIM( cAtende, @lEnd, nOrdem, @oPrinter ) },"Imprimindo Relatorio...")
+		
+	Else 
+		MsgInfo( "Relatório cancelado pelo usuário." )
+		oPrinter:Cancel()
+	EndIf
+	
+	oSetup		:= Nil
+	oPrinter	:= Nil
+
+Return Nil
+
+/*==========================================================================
+ Funcao...........:	TMKR3AIM
+ Descricao........:	Impressao do Relatorio
+ Parametros.......:	Nil
+ Retorno..........:	Nil
+==========================================================================*/
+Static Function TMKR3AIM( cAtende, lEnd, nOrdem, oPrinter )
+    Local aAreaATU		:= GetArea() 
+    Local aAreaSUA		:= SUA->( GetArea() )
+    Local aAreaSUB		:= SUB->( GetArea() )
+    Local aAreaSB1		:= SB1->( GetArea() )
+	Local aImprime		:= {}
+	Local aFatura		:= {}
+	Local aImpostos		:= {}
+	Local nValICM		:= 0
+	Local nValRet		:= 0
+	Local nValIpi		:= 0
+	Local nX			:= 0
+	
+    Private cNumAten	:= SUA->UA_NUM
+    Private cTpOper		:= SUA->UA_OPER
+    Private dEmissao	:= SUA->UA_EMISSAO
+    
+	Private nValFre		:= SUA->UA_FRETE
+	Private nBaseCal	:= 0
+	Private nTotST		:= 0
+	Private nTotIPI		:= 0
+	Private nTotSIm		:= 0
+	Private nTotICMS	:= 0
+	Private nTotal		:= 0
+	
+	//Armazena Faturas
+	DbSelectarea("SL4")
+	SL4->( DbSetorder(1) )
+	If SL4->( MsSeek(xFilial("SL4") + SUA->UA_NUM + "SIGATMK") )
+		While !SL4->( Eof() ) .And.	SL4->L4_Filial == xFilial("SL4") .And.;
+										SL4->L4_NUM == SUA->UA_NUM .And.;
+										Alltrim( SL4->L4_ORIGEM ) == "SIGATMK"
+			
+			Aadd( aFatura,	{;
+							SL4->L4_DATA,;
+							SL4->L4_VALOR,;
+							SL4->L4_FORMA;
+							})
+			
+			SL4->( DbSkip() )
+		End
+	EndIf
+	
+	//Posiciona Cliente
+	DbSelectarea("SA1")
+	SA1->( DbSetorder(1) )
+	SA1->( DbSeek(xFilial("SA1") + SUA->UA_CLIENTE + SUA->UA_LOJA) )
+	
+	//Salva Funcao Fiscal atual
+	nSavNF	:= MaFisSave()
+
+	//Posiciona Itens
+	DbSelectarea("SUB")
+	SUB->( DbSetorder(1) )
+	SUB->( DbSeek(xFilial("SUB") + cNumAten) )
+	While !SUB->( Eof() ) .And. 	SUB->UB_FILIAL == xFilial("SUB") .And.;
+									SUB->UB_NUM == cNumAten
+
+		nValRet	:= 0
+		nValIpi	:= 0
+		nValICM	:= 0
+		
+		DbSelectarea("SB1")
+		SB1->( DbSetorder(1) )
+		SB1->( DbSeek(xFilial("SB1") + SUB->UB_PRODUTO) )
+
+		//Finaliza Funcao fiscal
+		MaFisEnd()
+
+		//Inicia Funcao Fiscal
+		MaFisIni(	SA1->A1_COD			,;	// 01 - Codigo Cliente
+					SA1->A1_LOJA		,;	// 02 - Loja do Cliente
+					"C"					,;	// 03 - C:Cliente , F:Fornecedor
+					"N"					,;	// 04 - Tipo da NF
+					SA1->A1_TIPO		,;	// 05 - Tipo do Cliente
+					Nil					,;	// 06 - Relacao de Impostos que suportados no arquivo
+					Nil					,;	// 07 - Tipo de complemento
+					Nil					,;	// 08 - Permite Incluir Impostos no Rodape .T./.F.
+					"SB1"				,;	// 09 - Alias do Cadastro de Produtos - ("SBI" P/ Front Loja)
+					"MATA410"			,;	// 10 - Nome da rotina que esta utilizando a funcao
+					Nil					,;	// 11 - Tipo de documento
+					Nil					,;	// 12 - Especie do documento
+					Nil					,;	// 13 - Codigo e Loja do Prospect
+					Nil					,;	// 14 - Grupo Cliente
+					Nil					,;	// 15 - Recolhe ISS
+					Nil					,;	// 16 - Codigo do cliente de entrega na nota fiscal de saida
+					Nil					,;	// 17 - Loja do cliente de entrega na nota fiscal de saida
+					Nil					)	// 18 - Informacoes do transportador [01]-UF,[02]-TPTRANS
+
+		//Adiciona o Produto para Calculo dos Impostos
+		MaFisAdd(	SB1->B1_COD			,;  // 01 - Codigo do Produto ( Obrigatorio )
+					SUB->UB_TES			,;	// 02 - Codigo do TES ( Opcional )
+					SUB->UB_QUANT		,;	// 03 - Quantidade ( Obrigatorio )
+					SUB->UB_VRUNIT		,; 	// 04 - Preco Unitario ( Obrigatorio )
+					0					,;  // 05 - Valor do Desconto ( Opcional )
+					""					,;	// 06 - Numero da NF Original ( Devolucao/Benef )
+					""					,;	// 07 - Serie da NF Original ( Devolucao/Benef )
+					0					,;	// 08 - RecNo da NF Original no arq SD1/SD2
+					0					,;	// 09 - Valor do Frete do Item ( Opcional )
+					0					,;	// 10 - Valor da Despesa do item ( Opcional )
+					0					,;	// 11 - Valor do Seguro do item ( Opcional )
+					0					,;	// 12 - Valor do Frete Autonomo ( Opcional )
+					SUB->UB_VLRITEM		,;	// 13 - Valor da Mercadoria ( Obrigatorio )
+					0					,;	// 14 - Valor da Embalagem ( Opiconal )
+					NIL					,;	// 15 - RecNo do SB1
+					NIL					,;	// 16 - RecNo do SF4
+					NIL					)
+
+		aImpostos := MafisRet(NIL, "NF_IMPOSTOS")
+
+		If Len(aImpostos) > 0
+
+			nPosRet		:= Ascan( aImpostos, { |x| AllTrim(x[01]) == "ICR" } )
+			nPosIPI		:= Ascan( aImpostos, { |x| AllTrim(x[01]) == "IPI" } )
+			nPosICM		:= Ascan( aImpostos, { |x| AllTrim(x[01]) == "ICM" } )
+
+			If nPosRet > 0
+				nValRet	:= aImpostos[nPosRet][05]
+			EndIf
+			If nPosIPI > 0
+				nValIpi	:= aImpostos[nPosIPI][05]
+			EndIf
+			If nPosICM > 0
+				nValICM	:= aImpostos[nPosICM][05]
+			EndIf
+
+		EndIf
+		
+		//Armazena Totais
+		nBaseCal	+= SUB->UB_VLRITEM + nValRet + nValIpi
+		nTotST		+= nValRet
+		nTotIPI		+= nValIpi
+		nTotSIm		+= SUB->UB_VLRITEM
+		nTotICMS	+= nValICM
+		nTotal		:= nBaseCal + nValFre
+
+		//Armazena dados para impressao
+		Aadd( aImprime,	{;
+						SUB->UB_ITEM,;
+						Transform( SUB->UB_QUANT, PesqPictQT("UB_QUANT") ),;
+						SB1->B1_UM,;
+						Posicione("SF4",1,xFilial("SF4") + SUB->UB_TES, "F4_CSOSN"),;
+						SUB->UB_CF,;
+						SB1->B1_COD,;
+						SB1->B1_DESC,;
+						Transform( SUB->UB_VRUNIT, "@E 99,999,999.99" ),;
+						Transform( SUB->UB_VLRITEM, "@E 99,999,999.99" ),;
+						Transform( nValICM, "@E 999,999.99" ),;
+						Transform( nValRet, "@E 999,999.99" ),;
+						DtoC( SUB->UB_DTENTRE );
+						})
+						
+		SUB->( DbSkip() )
+	End
+
+	//Finaliza Funcao fiscal
+	MaFisEnd()
+
+	//Restaura Funcao Fiscal
+	MaFisRestore( nSavNF )
+
+	For nX := 1 To Len( aImprime )
+	
+		If nLinha > nMaxLin
+			ImpCabec( oPrinter, aFatura )
+		EndIf
+
+		oPrinter:Say( nLinha,COLUINI+0010,aImprime[ nX ][ 01 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0086,aImprime[ nX ][ 02 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0126,aImprime[ nX ][ 03 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0156,aImprime[ nX ][ 04 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0186,aImprime[ nX ][ 05 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0246,aImprime[ nX ][ 06 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0346,aImprime[ nX ][ 07 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0601,aImprime[ nX ][ 08 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0661,aImprime[ nX ][ 09 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0701,aImprime[ nX ][ 10 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0741,aImprime[ nX ][ 11 ]	,oFont08 )
+		oPrinter:Say( nLinha,COLUINI+0810,aImprime[ nX ][ 12 ]	,oFont08 )
+		nLinha := nLinha + 10
+		
+	Next nX
+	
+	oPrinter:Print()
+
+    RestArea( aAreaATU )
+    RestArea( aAreaSUA )
+    RestArea( aAreaSUB )
+    RestArea( aAreaSB1 )
+
+Return Nil
+
+/*==========================================================================
+ Funcao...........:	ImpCabec
+ Descricao........:	Impressao do Cabecalho
+==========================================================================*/
+Static Function ImpCabec( oPrinter, aFatura )
+	Local cLogo		:= FisXlogo("1")
+	Local oBrushA  	:= TBrush():New( , CLR_BLUE )	
+	Local oBrushP  	:= TBrush():New( , CLR_BLACK )	
+	Local nTotFat	:= 0
+	Local nLinAux	:= 0
+	Local nColAux	:= 0
+	Local nCount	:= 0
+	Local nFatura	:= 0
+	
+	nPagina ++
+	
+	If nPagina == 1
+		oPrinter:Startpage()
+	Else
+		oPrinter:Endpage()
+		oPrinter:Startpage()
+	EndIf
+	
+	//Box Superior
+	oPrinter:Box(0005,COLUINI,0085,MAXCOLU)
+	
+	//Logo
+	oPrinter:SayBitmap(0015,COLUINI+10,cLogo,0140,0050)
+
+	//Dados da Empresa
+	oPrinter:Say(0025,COLUINI+0180,SM0->M0_NOMECOM																			,oFont08)
+	oPrinter:Say(0040,COLUINI+0180,SM0->M0_ENDCOB																			,oFont08)
+	oPrinter:Say(0055,COLUINI+0180,"CEP: " + SM0->M0_CEPCOB + " " + Alltrim( SM0->M0_CIDCOB ) + " / " + SM0->M0_ESTCOB	,oFont08)
+	oPrinter:Say(0070,COLUINI+0180,"CNPJ: " + SM0->M0_CGC+ " IE: " + SM0->M0_INSC											,oFont08)
+	
+	If nPagina == 1
+
+		nLinha	:= 195
+		
+		//Box Dados do Cliente
+		oPrinter:Box(0090,COLUINI,0180,MAXCOLU)
+
+		//Orcamento
+		oPrinter:Say(0125,COLUINI+0003,"ATENDIMENTO DE VENDAS"														,oFont10)
+		oPrinter:Say(0140,COLUINI+0045,cNumAten																		,oFont10)
+
+		//Dados do cliente
+		oPrinter:Say(0110,COLUINI+0135,"CLIENTE: " + SA1->A1_COD + " / " + SA1->A1_LOJA + " - " + SA1->A1_NOME	,oFont08)
+		oPrinter:Say(0125,COLUINI+0135,"ENDEREÇO: " + SA1->A1_END													,oFont08)
+		oPrinter:Say(0140,COLUINI+0135,"CIDADE: " + SA1->A1_MUN 													,oFont08)
+		oPrinter:Say(0155,COLUINI+0135,"CNPJ / CPF: " + SA1->A1_CGC												,oFont08)
+		oPrinter:Say(0170,COLUINI+0135,"I.E.: " + SA1->A1_INSCR													,oFont08)
+		
+		If !Empty( SUA->UA_CODCONT )
+			DbSelectarea("SU5")
+			SU5->( DbSetorder(1) )
+			SU5->( DbSeek(xFilial("SU5") + SUA->UA_CODCONT) )
+		
+			oPrinter:Say(0110,COLUINI+0450,"CONTATO: "	+ SU5->U5_CONTAT												,oFont08)
+			oPrinter:Say(0125,COLUINI+0450,"CEP: "	+ SU5->U5_CEP														,oFont08)
+			oPrinter:Say(0140,COLUINI+0450,"UF: " + SU5->U5_EST														,oFont08)
+			oPrinter:Say(0155,COLUINI+0450,"FONE: (" + SU5->U5_DDD + ")" + SU5->U5_FONE								,oFont08)
+			oPrinter:Say(0170,COLUINI+0450,"Fax: (" + SU5->U5_DDD + ")" + SU5->U5_FAX									,oFont08)
+		EndIf
+
+		oPrinter:Say(0110,COLUINI+0650,"Tipo Frete: " + IIF( SUA->UA_TPFRETE == "F", "FOB", "CIF" )				,oFont08)
+
+		If !Empty( SUA->UA_VEND )
+			
+			DbSelectarea("SA3")
+			SA3->( DbSetorder(1) )
+			SA3->( DbSeek(xFilial("SA3") + SUA->UA_VEND) )
+			
+			oPrinter:Say(0125,COLUINI+0650,"Vendedor: "	+ SA3->A3_NOME													,oFont08)
+			oPrinter:Say(0140,COLUINI+0650,"E-Mail: " + SA3->A3_EMAIL													,oFont08)
+			oPrinter:Say(0170,COLUINI+0650,"Fax: " + SA3->A3_FAX														,oFont08)
+			oPrinter:Say(0155,COLUINI+0650,"Cod. Pagto: " + SUA->UA_CONDPG												,oFont08)
+		Else
+			oPrinter:Say(0125,COLUINI+0650,"Cod. Pagto: " + SUA->UA_CONDPG												,oFont08)
+		EndIf
+
+
+		//Box dos produtos
+		oPrinter:Box(0175,COLUINI,0350,MAXCOLU)
+		
+		//Box dos Impostos
+		oPrinter:Box(0355,COLUINI,0450,MAXCOLU)
+		oPrinter:FillRect( {0355,COLUINI,0450,COLUINI+0030}	, oBrushA )
+		oPrinter:Say( 0445,COLUINI+0020,"IMPOSTOS / TOTAIS"		,oFont10, ,CLR_WHITE, 0270 )
+
+		oPrinter:Say(0370,COLUINI+0250,"Base de Cálculo: " + Transform( nBaseCal, "@E 999,999,999.99" )	,oFont08)
+		oPrinter:Say(0387,COLUINI+0250,"Total ST.:       " + Transform( nTotST	, "@E 999,999,999.99" )	,oFont08)
+		oPrinter:Say(0404,COLUINI+0250,"Total IPI:       " + Transform( nTotIPI	, "@E 999,999,999.99" )	,oFont08)
+		oPrinter:Say(0404,COLUINI+0250,"Frete:   :       " + Transform( nValFre	, "@E 999,999,999.99" )	,oFont08)
+		oPrinter:Say(0438,COLUINI+0250,"Total:           " + Transform( nTotal	, "@E 999,999,999.99" )	,oFont08)
+		
+		oPrinter:Say(0370,COLUINI+0550,"Total S/Imp:     " + Transform( nTotSIm	, "@E 999,999,999.99" )	,oFont08)
+		oPrinter:Say(0387,COLUINI+0550,"Total ICMS:      " + Transform( nTotICMS, "@E 999,999,999.99" )	,oFont08)
+		
+		//Box de duplicatas
+		oPrinter:Box(0455,COLUINI,0550,MAXCOLU)
+		oPrinter:FillRect( {0455,COLUINI,0550,COLUINI+0030}	, oBrushA )
+		oPrinter:Say( 0530,COLUINI+0020,"DUPLICATAS"			,oFont10, ,CLR_WHITE, 0270 )
+		
+		oPrinter:FillRect( {0455,COLUINI+0030,0475,MAXCOLU}	, oBrushA )
+		oPrinter:Say( 0468,COLUINI+0060,"VENCIMENTO / VALOR"	,oFont10, ,CLR_WHITE )
+		oPrinter:Say( 0468,COLUINI+0300,"VENCIMENTO / VALOR"	,oFont10, ,CLR_WHITE )
+		oPrinter:Say( 0468,COLUINI+0510,"VENCIMENTO / VALOR"	,oFont10, ,CLR_WHITE )
+		oPrinter:Say( 0468,COLUINI+0720,"VENCIMENTO / VALOR"	,oFont10, ,CLR_WHITE )
+
+		If Len( aFatura ) > 0
+			nLinAux	:= 0488
+			nColAux	:= COLUINI+0060
+		
+			For nX := 1 To Len( aFatura )
+
+				nCount 	++
+				nFatura	++
+				
+				If nFatura > 12
+					Exit
+				EndIf
+				
+				oPrinter:Say( nLinAux,nColAux, DtoC( aFatura[nX][01] ) + "  " + Transform( aFatura[nX][02], "@E 999,999,999.99" )	,oFont10 )
+				
+				nTotFat += aFatura[ nX ][ 02 ]
+			
+				If nCount > 2
+					nCount	:= 0
+					nLinAux	:= 0488
+					nColAux	+= IIF( nFatura == 3, 210, 220 )
+				Else
+					nLinAux	+= 20
+				EndIf
+				
+			Next nX
+			
+		EndIf
+		
+		oPrinter:Say( 0545,COLUINI+0050,"T O T A L  G E R A L: " + Transform( nTotFat, "@E 999,999,999.99" ) ,oFont10 )
+
+		//Linhas Verticais
+		oPrinter:Line( 0455, COLUINI+0240, 0535, COLUINI+0240 )
+		oPrinter:Line( 0455, COLUINI+0450, 0535, COLUINI+0450 )
+		oPrinter:Line( 0455, COLUINI+0660, 0535, COLUINI+0660 )
+		
+		//Linhas Horizontais
+		oPrinter:Line( 0475, COLUINI+0030, 0475, MAXCOLU )
+		oPrinter:Line( 0495, COLUINI+0030, 0495, MAXCOLU )
+		oPrinter:Line( 0515, COLUINI+0030, 0515, MAXCOLU )
+		oPrinter:Line( 0535, COLUINI+0030, 0535, MAXCOLU )
+		
+		//Box das Observacoes
+		oPrinter:Box(0555,COLUINI,0605,MAXCOLU)
+		oPrinter:Say(0565,COLUINI+0350,"INFORMAÇÕES IMPORTANTES"																																							,oFont10)
+		oPrinter:Say(0575,COLUINI+0010,"Preços: Os preços mencionados são válidos por XX dias ou enquanto durarem os estoques. Os preços estão sujeitos a ajustes, caso haja alteração na política tributária vigente."		,oFont06)
+		oPrinter:Say(0583,COLUINI+0010,"Expedição:"																																											,oFont06)
+		oPrinter:Say(0591,COLUINI+0010,"Valor mínimo do boleto: R$100,00 por nota fiscal;"																																	,oFont06)
+		oPrinter:Say(0599,COLUINI+0010,"Os pedidos serão despachados no mesmo dia desde que todos os itens estejam disponíveis no estoque, respeitando os horários de corte das transportadoras."							,oFont06)
+
+	Else
+
+		nLinha	:= 115
+		nMaxLin	:= 600
+		
+		//Box dos produtos
+		oPrinter:Box(0090,COLUINI,0605,MAXCOLU)
+
+	EndIf
+	
+	//Cabecalho dos Itens
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0000,IIF(nPagina == 1, 0185, 0105),COLUINI+0040}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0005,"ITEM"			,oFont10, ,CLR_WHITE )		
+		
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0040,IIF(nPagina == 1, 0185, 0105),COLUINI+0120}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0046,"QUANTIDADE"	,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0120,IIF(nPagina == 1, 0185, 0105),COLUINI+0150}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0126,"UM"			,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0150,IIF(nPagina == 1, 0185, 0105),COLUINI+0180}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0156,"ST"			,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0180,IIF(nPagina == 1, 0185, 0105),COLUINI+0240}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0186,"CLASS. FIS"	,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0240,IIF(nPagina == 1, 0185, 0105),COLUINI+0340}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0246,"PRODUTO"		,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0340,IIF(nPagina == 1, 0185, 0105),COLUINI+0500}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0346,"DESCRIÇÃO"		,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0500,IIF(nPagina == 1, 0185, 0105),COLUINI+0640}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0596,"PREÇO"			,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0640,IIF(nPagina == 1, 0185, 0105),COLUINI+0700}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0656,"TOTAL"			,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0700,IIF(nPagina == 1, 0185, 0105),COLUINI+0740}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0706,"ICMS"			,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0740,IIF(nPagina == 1, 0185, 0105),COLUINI+0790}	, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0746,"ICMS ST."		,oFont10, ,CLR_WHITE )		
+
+	oPrinter:FillRect( {IIF(nPagina == 1, 0175, 0095),COLUINI+0790,IIF(nPagina == 1, 0185, 0105),MAXCOLU}			, oBrushA )
+	oPrinter:Say( IIF(nPagina == 1, 0183, 0103),COLUINI+0796,"DT. ENTREGA"		,oFont10, ,CLR_WHITE )		
+
+	//Grade dos produtos
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0040, IIF(nPagina == 1, 0350, 0605), COLUINI+0040 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0120, IIF(nPagina == 1, 0350, 0605), COLUINI+0120 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0150, IIF(nPagina == 1, 0350, 0605), COLUINI+0150 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0180, IIF(nPagina == 1, 0350, 0605), COLUINI+0180 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0240, IIF(nPagina == 1, 0350, 0605), COLUINI+0240 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0340, IIF(nPagina == 1, 0350, 0605), COLUINI+0340 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0580, IIF(nPagina == 1, 0350, 0605), COLUINI+0580 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0640, IIF(nPagina == 1, 0350, 0605), COLUINI+0640 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0700, IIF(nPagina == 1, 0350, 0605), COLUINI+0700 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0740, IIF(nPagina == 1, 0350, 0605), COLUINI+0740 )
+	oPrinter:Line( IIF(nPagina == 1, 0175, 0105), COLUINI+0790, IIF(nPagina == 1, 0350, 0605), COLUINI+0790 )
+	
+Return Nil
